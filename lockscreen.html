@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Passcode" />
+  <title>Passcode</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+    }
+
+    /* Fullscreen Container (iPhone 17 Edge-to-Edge) */
+    #app {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Default Fallback Wallpaper */
+    #wallpaper-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #111827;
+      background-image: linear-gradient(160deg, #1e293b 0%, #0f172a 50%, #020617 100%);
+      background-size: cover;
+      background-position: center center;
+      background-repeat: no-repeat;
+      transform: translateZ(0);
+      will-change: transform;
+      z-index: 1;
+    }
+
+    /* High-DPI Screenshot Layer (Full-height Dock fit for iPhone 17) */
+    #wallpaper-img {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: calc(100dvh + env(safe-area-inset-bottom, 34px));
+      object-fit: fill;
+      object-position: center bottom;
+      display: none;
+      pointer-events: none;
+      image-rendering: -webkit-optimize-contrast;
+      z-index: 1;
+    }
+
+    /* Lockscreen Blur Overlay (GPU-accelerated smooth transition) */
+    #lockscreen-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: calc(env(safe-area-inset-top, 20px) + 52px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 26px);
+      background: rgba(15, 18, 28, 0.42);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      backdrop-filter: blur(28px) saturate(160%);
+      transform: translateZ(0);
+      will-change: opacity, transform;
+      transition: opacity 0.36s cubic-bezier(0.16, 1, 0.3, 1), transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #lockscreen-overlay.unlocked {
+      opacity: 0;
+      transform: scale(1.03);
+      pointer-events: none;
+    }
+
+    /* Top Prompt & Dots */
+    .passcode-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    .lock-icon {
+      width: 14px;
+      height: 18px;
+      margin-bottom: 14px;
+      opacity: 0.92;
+    }
+
+    .prompt-text {
+      font-size: 19px;
+      font-weight: 400;
+      letter-spacing: -0.2px;
+      color: #ffffff;
+      margin-bottom: 22px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+
+    .dots-row {
+      display: flex;
+      gap: 20px;
+      height: 14px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dots-row.shake {
+      animation: iosShake 0.42s cubic-bezier(.36,.07,.19,.97) both;
+    }
+
+    @keyframes iosShake {
+      10%, 90% { transform: translateX(-4px); }
+      20%, 80% { transform: translateX(7px); }
+      30%, 50%, 70% { transform: translateX(-10px); }
+      40%, 60% { transform: translateX(10px); }
+    }
+
+    .dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.9);
+      background: transparent;
+      transition: background-color 0.08s ease;
+    }
+
+    .dot.filled {
+      background: #ffffff;
+      border-color: #ffffff;
+    }
+
+    /* Keypad Grid */
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 78px);
+      grid-gap: 16px 26px;
+      justify-content: center;
+      align-items: center;
+      margin: 10px 0;
+    }
+
+    .key-btn {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.16);
+      border: none;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.18s ease;
+      padding: 0;
+      outline: none;
+    }
+
+    .key-btn:active, .key-btn.pressed {
+      background: rgba(255, 255, 255, 0.52);
+      transition: background-color 0.02s ease;
+    }
+
+    .key-num {
+      font-size: 34px;
+      font-weight: 300;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .key-letters {
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 1.8px;
+      margin-top: 2px;
+      opacity: 0.92;
+      height: 11px;
+    }
+
+    .key-empty {
+      width: 78px;
+      height: 78px;
+      visibility: hidden;
+    }
+
+    /* Bottom Actions */
+    .bottom-actions {
+      width: 100%;
+      max-width: 310px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 8px;
+      margin-top: 4px;
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 400;
+      padding: 10px 12px;
+      cursor: pointer;
+      letter-spacing: -0.2px;
+    }
+
+    .action-btn:active {
+      opacity: 0.5;
+    }
+
+    /* Unlocked Screen Overlays */
+    #unlocked-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateZ(0);
+      will-change: opacity;
+      transition: opacity 0.32s ease-out;
+    }
+
+    #unlocked-layer.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Real-time Status Bar Clock Patch */
+    #live-clock-patch {
+      position: absolute;
+      top: 11px;
+      left: 22px;
+      min-width: 58px;
+      height: 24px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.28);
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    #live-clock-patch.visible {
+      display: flex;
+    }
+
+    /* Secret Relock Tap Zone (Top-Right Battery/Status Corner, 4x tap) */
+    #secret-relock-zone {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 90px;
+      height: 70px;
+      z-index: 20;
+      background: transparent;
+    }
+
+    /* Secret Settings Modal (5x tap on Emergency) */
+    #settings-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.78);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    #settings-modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 360px;
+      background: #1c1c1e;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 20px;
+      padding: 20px;
+      color: #fff;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 6px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-sub {
+      font-size: 12.5px;
+      color: #a1a1aa;
+      margin: 0 0 16px 0;
+      line-height: 1.4;
+    }
+
+    .setting-group {
+      margin-bottom: 14px;
+    }
+
+    .setting-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e4e4e7;
+      margin-bottom: 6px;
+    }
+
+    .setting-input, .setting-select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: #2c2c2e;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .file-btn {
+      display: block;
+      width: 100%;
+      padding: 11px;
+      border-radius: 10px;
+      background: #0a84ff;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      color: #e4e4e7;
+      cursor: pointer;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      padding: 11px;
+      border-radius: 10px;
+      border: none;
+      background: #3a3a3c;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      flex: 1;
+      padding: 11px;
+      border-radius: 10px;
+      border: none;
+      background: #30d158;
+      color: #000;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    #status-msg {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #30d158;
+      text-align: center;
+      min-height: 16px;
+    }
+
+    /* Small screens adjustment */
+    @media (max-height: 700px) {
+      #lockscreen-overlay {
+        padding-top: calc(env(safe-area-inset-top, 12px) + 28px);
+        padding-bottom: calc(env(safe-area-inset-bottom, 12px) + 16px);
+      }
+      .keypad {
+        grid-template-columns: repeat(3, 70px);
+        grid-gap: 12px 22px;
+      }
+      .key-btn, .key-empty {
+        width: 70px;
+        height: 70px;
+      }
+      .key-num {
+        font-size: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Crisp Full-Resolution Wallpaper Layer -->
+    <div id="wallpaper-layer"></div>
+    <img id="wallpaper-img" alt="" />
+
+    <!-- Unlocked State (Clear Screenshot + Live Clock + Secret Relock) -->
+    <div id="unlocked-layer">
+      <div id="live-clock-patch">09:41</div>
+      <div id="secret-relock-zone" title="Tap 4x to relock"></div>
+    </div>
+
+    <!-- Lockscreen Overlay -->
+    <div id="lockscreen-overlay">
+      <div class="passcode-header">
+        <svg class="lock-icon" viewBox="0 0 14 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11.5 6.5H10.5V4.5C10.5 2.57 8.93 1 7 1C5.07 1 3.5 2.57 3.5 4.5V6.5H2.5C1.67 6.5 1 7.17 1 8V15.5C1 16.33 1.67 17 2.5 17H11.5C12.33 17 13 16.33 13 15.5V8C13 7.17 12.33 6.5 11.5 6.5ZM4.8 4.5C4.8 3.29 5.79 2.3 7 2.3C8.21 2.3 9.2 3.29 9.2 4.5V6.5H4.8V4.5Z" fill="white"/>
+        </svg>
+        <div class="prompt-text" id="prompt-text">Enter Passcode</div>
+        <div class="dots-row" id="dots-row"></div>
+      </div>
+
+      <div class="keypad" id="keypad">
+        <button class="key-btn" data-num="1"><span class="key-num">1</span><span class="key-letters">&nbsp;</span></button>
+        <button class="key-btn" data-num="2"><span class="key-num">2</span><span class="key-letters">ABC</span></button>
+        <button class="key-btn" data-num="3"><span class="key-num">3</span><span class="key-letters">DEF</span></button>
+        <button class="key-btn" data-num="4"><span class="key-num">4</span><span class="key-letters">GHI</span></button>
+        <button class="key-btn" data-num="5"><span class="key-num">5</span><span class="key-letters">JKL</span></button>
+        <button class="key-btn" data-num="6"><span class="key-num">6</span><span class="key-letters">MNO</span></button>
+        <button class="key-btn" data-num="7"><span class="key-num">7</span><span class="key-letters">PQRS</span></button>
+        <button class="key-btn" data-num="8"><span class="key-num">8</span><span class="key-letters">TUV</span></button>
+        <button class="key-btn" data-num="9"><span class="key-num">9</span><span class="key-letters">WXYZ</span></button>
+        <div class="key-empty"></div>
+        <button class="key-btn" data-num="0"><span class="key-num">0</span><span class="key-letters">&nbsp;</span></button>
+        <div class="key-empty"></div>
+      </div>
+
+      <div class="bottom-actions">
+        <button class="action-btn" id="emergency-btn">Emergency</button>
+        <button class="action-btn" id="cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Secret Configuration Modal -->
+  <div id="settings-modal">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>Magic Passcode Settings</span>
+      </div>
+      <p class="modal-sub">Tap "Emergency" 5x to open this menu. Tap the top-right corner 4x after unlocking to relock.</p>
+
+      <div class="setting-group">
+        <label class="setting-label">1. Home Screen Screenshot (Full HD Resolution)</label>
+        <label class="file-btn" for="bg-upload">Choose Screenshot from Photos</label>
+        <input type="file" id="bg-upload" accept="image/*" style="display:none;" />
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">2. Trick Mode</label>
+        <select class="setting-select" id="trick-mode">
+          <option value="any">Any Code (Any passcode unlocks & logs)</option>
+          <option value="second_try">Second Try (Fails 1st time, unlocks 2nd time)</option>
+          <option value="fixed">Specific Secret Passcode</option>
+        </select>
+      </div>
+
+      <div class="setting-group" id="fixed-code-group" style="display:none;">
+        <label class="setting-label">Secret Passcode</label>
+        <input type="tel" class="setting-input" id="fixed-code-input" maxlength="6" placeholder="e.g. 123456" />
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">3. Passcode Length</label>
+        <select class="setting-select" id="digit-length">
+          <option value="6">6 Digits (iPhone Standard)</option>
+          <option value="4">4 Digits</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="checkbox-row">
+          <input type="checkbox" id="live-clock-toggle" />
+          <span>Show real-time clock in top-left corner</span>
+        </label>
+      </div>
+
+      <div class="setting-group" style="background: rgba(255,255,255,0.06); padding: 10px; border-radius: 10px;">
+        <div style="font-size: 11px; color: #a1a1aa;">Last passcode entered by spectator:</div>
+        <div id="last-entered-code" style="font-size: 20px; font-weight: 700; letter-spacing: 4px; color: #30d158; margin-top: 2px;">-</div>
+      </div>
+
+      <div id="status-msg"></div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" id="clear-bg-btn">Remove Photo</button>
+        <button class="btn-primary" id="save-settings-btn">Save & Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const DB_NAME = 'MagicPasscodeDB';
+      const STORE_NAME = 'assets';
+      const BG_KEY = 'homescreen_wallpaper';
+
+      function openDB() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB_NAME, 1);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async function saveWallpaperBlob(blobOrDataUrl) {
+        try {
+          const db = await openDB();
+          return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(blobOrDataUrl, BG_KEY);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => reject(tx.error);
+          });
+        } catch (err) {
+          if (typeof blobOrDataUrl === 'string') {
+            localStorage.setItem('magic_bg_fallback', blobOrDataUrl);
+          }
+        }
+      }
+
+      async function loadWallpaperAsset() {
+        try {
+          const db = await openDB();
+          return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const req = tx.objectStore(STORE_NAME).get(BG_KEY);
+            req.onsuccess = () => resolve(req.result || localStorage.getItem('magic_bg_fallback'));
+            req.onerror = () => resolve(localStorage.getItem('magic_bg_fallback'));
+          });
+        } catch (e) {
+          return localStorage.getItem('magic_bg_fallback');
+        }
+      }
+
+      async function deleteWallpaperAsset() {
+        localStorage.removeItem('magic_bg_fallback');
+        try {
+          const db = await openDB();
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).delete(BG_KEY);
+        } catch (e) {}
+      }
+
+      const state = {
+        input: '',
+        length: parseInt(localStorage.getItem('magic_len') || '6', 10),
+        mode: localStorage.getItem('magic_mode') || 'any',
+        fixedCode: localStorage.getItem('magic_fixed') || '123456',
+        liveClock: localStorage.getItem('magic_clock') === 'true',
+        lastCode: localStorage.getItem('magic_last_code') || '-',
+        attemptCount: 0,
+        isUnlocked: false
+      };
+
+      const wallpaperImg = document.getElementById('wallpaper-img');
+      const lockOverlay = document.getElementById('lockscreen-overlay');
+      const unlockedLayer = document.getElementById('unlocked-layer');
+      const dotsRow = document.getElementById('dots-row');
+      const cancelBtn = document.getElementById('cancel-btn');
+      const emergencyBtn = document.getElementById('emergency-btn');
+      const settingsModal = document.getElementById('settings-modal');
+      const bgUpload = document.getElementById('bg-upload');
+      const trickModeSelect = document.getElementById('trick-mode');
+      const fixedCodeGroup = document.getElementById('fixed-code-group');
+      const fixedCodeInput = document.getElementById('fixed-code-input');
+      const digitLengthSelect = document.getElementById('digit-length');
+      const liveClockToggle = document.getElementById('live-clock-toggle');
+      const lastEnteredCodeEl = document.getElementById('last-entered-code');
+      const statusMsg = document.getElementById('status-msg');
+      const liveClockPatch = document.getElementById('live-clock-patch');
+
+      let currentObjectUrl = null;
+
+      function applyWallpaperSource(asset) {
+        if (!asset) {
+          wallpaperImg.style.display = 'none';
+          wallpaperImg.removeAttribute('src');
+          return;
+        }
+        if (currentObjectUrl) {
+          URL.revokeObjectURL(currentObjectUrl);
+          currentObjectUrl = null;
+        }
+        if (asset instanceof Blob) {
+          currentObjectUrl = URL.createObjectURL(asset);
+          wallpaperImg.src = currentObjectUrl;
+        } else {
+          wallpaperImg.src = asset;
+        }
+        wallpaperImg.style.display = 'block';
+      }
+
+      function renderDots() {
+        dotsRow.innerHTML = '';
+        for (let i = 0; i < state.length; i++) {
+          const d = document.createElement('div');
+          d.className = 'dot' + (i < state.input.length ? ' filled' : '');
+          dotsRow.appendChild(d);
+        }
+        cancelBtn.textContent = state.input.length > 0 ? 'Delete' : 'Cancel';
+      }
+
+      function unlockPhone(enteredCode) {
+        state.lastCode = enteredCode;
+        localStorage.setItem('magic_last_code', enteredCode);
+        lastEnteredCodeEl.textContent = enteredCode;
+
+        state.isUnlocked = true;
+        lockOverlay.classList.add('unlocked');
+        unlockedLayer.classList.add('active');
+        updateClock();
+      }
+
+      function relockPhone() {
+        state.isUnlocked = false;
+        state.input = '';
+        state.attemptCount = 0;
+        lockOverlay.classList.remove('unlocked');
+        unlockedLayer.classList.remove('active');
+        renderDots();
+      }
+
+      function triggerWrongPasscode() {
+        dotsRow.classList.remove('shake');
+        void dotsRow.offsetWidth;
+        dotsRow.classList.add('shake');
+        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+        setTimeout(() => {
+          state.input = '';
+          renderDots();
+        }, 420);
+      }
+
+      function handleDigit(num) {
+        if (state.isUnlocked || state.input.length >= state.length) return;
+        state.input += num;
+        renderDots();
+
+        if (state.input.length === state.length) {
+          const code = state.input;
+          setTimeout(() => {
+            if (state.mode === 'any') {
+              unlockPhone(code);
+            } else if (state.mode === 'second_try') {
+              state.attemptCount += 1;
+              if (state.attemptCount >= 2) {
+                unlockPhone(code);
+              } else {
+                triggerWrongPasscode();
+              }
+            } else if (state.mode === 'fixed') {
+              if (code === state.fixedCode) {
+                unlockPhone(code);
+              } else {
+                triggerWrongPasscode();
+              }
+            }
+          }, 110);
+        }
+      }
+
+      document.querySelectorAll('.key-btn').forEach(btn => {
+        btn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          btn.classList.add('pressed');
+          handleDigit(btn.dataset.num);
+        }, { passive: false });
+
+        btn.addEventListener('touchend', () => {
+          btn.classList.remove('pressed');
+        });
+
+        btn.addEventListener('mousedown', (e) => {
+          if (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
+          handleDigit(btn.dataset.num);
+        });
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        if (state.input.length > 0) {
+          state.input = state.input.slice(0, -1);
+          renderDots();
+        }
+      });
+
+      let emergencyTaps = 0;
+      let emergencyTimer = null;
+      emergencyBtn.addEventListener('click', () => {
+        emergencyTaps++;
+        clearTimeout(emergencyTimer);
+        emergencyTimer = setTimeout(() => { emergencyTaps = 0; }, 1500);
+        if (emergencyTaps >= 5) {
+          emergencyTaps = 0;
+          openSettings();
+        }
+      });
+
+      let relockTaps = 0;
+      let relockTimer = null;
+      document.getElementById('secret-relock-zone').addEventListener('click', () => {
+        relockTaps++;
+        clearTimeout(relockTimer);
+        relockTimer = setTimeout(() => { relockTaps = 0; }, 1400);
+        if (relockTaps >= 4) {
+          relockTaps = 0;
+          relockPhone();
+        }
+      });
+
+      function openSettings() {
+        trickModeSelect.value = state.mode;
+        fixedCodeInput.value = state.fixedCode;
+        digitLengthSelect.value = String(state.length);
+        liveClockToggle.checked = state.liveClock;
+        lastEnteredCodeEl.textContent = state.lastCode;
+        fixedCodeGroup.style.display = state.mode === 'fixed' ? 'block' : 'none';
+        statusMsg.textContent = '';
+        settingsModal.classList.add('open');
+      }
+
+      trickModeSelect.addEventListener('change', () => {
+        fixedCodeGroup.style.display = trickModeSelect.value === 'fixed' ? 'block' : 'none';
+      });
+
+      bgUpload.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        statusMsg.style.color = '#fbbf24';
+        statusMsg.textContent = 'Processing original resolution screenshot...';
+
+        await saveWallpaperBlob(file);
+        applyWallpaperSource(file);
+
+        statusMsg.style.color = '#30d158';
+        statusMsg.textContent = 'HD screenshot saved (100% sharp)!';
+      });
+
+      document.getElementById('clear-bg-btn').addEventListener('click', async () => {
+        await deleteWallpaperAsset();
+        applyWallpaperSource(null);
+        statusMsg.style.color = '#30d158';
+        statusMsg.textContent = 'Screenshot removed.';
+      });
+
+      document.getElementById('save-settings-btn').addEventListener('click', () => {
+        state.mode = trickModeSelect.value;
+        state.fixedCode = (fixedCodeInput.value || '123456').replace(/\D/g, '');
+        state.length = parseInt(digitLengthSelect.value, 10);
+        state.liveClock = liveClockToggle.checked;
+
+        localStorage.setItem('magic_mode', state.mode);
+        localStorage.setItem('magic_fixed', state.fixedCode);
+        localStorage.setItem('magic_len', String(state.length));
+        localStorage.setItem('magic_clock', String(state.liveClock));
+
+        state.input = '';
+        state.attemptCount = 0;
+        renderDots();
+        updateClock();
+        settingsModal.classList.remove('open');
+      });
+
+      function updateClock() {
+        if (!state.liveClock) {
+          liveClockPatch.classList.remove('visible');
+          return;
+        }
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        liveClockPatch.textContent = hh + ':' + mm;
+        liveClockPatch.classList.add('visible');
+      }
+      setInterval(updateClock, 5000);
+
+      (async function init() {
+        const savedBg = await loadWallpaperAsset();
+        if (savedBg) applyWallpaperSource(savedBg);
+        renderDots();
+        updateClock();
+      })();
+    })();
+  </script>
+</body>
+</html>
